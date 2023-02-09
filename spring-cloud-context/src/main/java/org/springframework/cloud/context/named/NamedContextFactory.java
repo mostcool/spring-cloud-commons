@@ -18,12 +18,14 @@ package org.springframework.cloud.context.named;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.springframework.aot.AotDetector;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactoryUtils;
 import org.springframework.beans.factory.DisposableBean;
@@ -33,10 +35,14 @@ import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.boot.autoconfigure.context.PropertyPlaceholderAutoConfiguration;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
+import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.context.annotation.AnnotationConfigRegistry;
+import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.ResolvableType;
 import org.springframework.core.env.MapPropertySource;
+import org.springframework.util.Assert;
 
 /**
  * Creates a set of child contexts that allows a set of Specifications to define the beans
@@ -48,16 +54,18 @@ import org.springframework.core.env.MapPropertySource;
  * @author Spencer Gibb
  * @author Dave Syer
  * @author Tommy Karlsson
+ * @author Olga Maciaszek-Sharma
  */
-// TODO: add javadoc
 public abstract class NamedContextFactory<C extends NamedContextFactory.Specification>
 		implements DisposableBean, ApplicationContextAware {
+
+	private final Map<String, ApplicationContextInitializer<GenericApplicationContext>> applicationContextInitializers;
 
 	private final String propertySourceName;
 
 	private final String propertyName;
 
-	private Map<String, AnnotationConfigApplicationContext> contexts = new ConcurrentHashMap<>();
+	private final Map<String, GenericApplicationContext> contexts = new ConcurrentHashMap<>();
 
 	private Map<String, C> configurations = new ConcurrentHashMap<>();
 
@@ -66,9 +74,15 @@ public abstract class NamedContextFactory<C extends NamedContextFactory.Specific
 	private Class<?> defaultConfigType;
 
 	public NamedContextFactory(Class<?> defaultConfigType, String propertySourceName, String propertyName) {
+		this(defaultConfigType, propertySourceName, propertyName, new HashMap<>());
+	}
+
+	public NamedContextFactory(Class<?> defaultConfigType, String propertySourceName, String propertyName,
+			Map<String, ApplicationContextInitializer<GenericApplicationContext>> applicationContextInitializers) {
 		this.defaultConfigType = defaultConfigType;
 		this.propertySourceName = propertySourceName;
 		this.propertyName = propertyName;
+		this.applicationContextInitializers = applicationContextInitializers;
 	}
 
 	@Override
@@ -92,8 +106,8 @@ public abstract class NamedContextFactory<C extends NamedContextFactory.Specific
 
 	@Override
 	public void destroy() {
-		Collection<AnnotationConfigApplicationContext> values = this.contexts.values();
-		for (AnnotationConfigApplicationContext context : values) {
+		Collection<GenericApplicationContext> values = this.contexts.values();
+		for (GenericApplicationContext context : values) {
 			// This can fail, but it never throws an exception (you see stack traces
 			// logged as WARN).
 			context.close();
@@ -101,7 +115,7 @@ public abstract class NamedContextFactory<C extends NamedContextFactory.Specific
 		this.contexts.clear();
 	}
 
-	protected AnnotationConfigApplicationContext getContext(String name) {
+	protected GenericApplicationContext getContext(String name) {
 		if (!this.contexts.containsKey(name)) {
 			synchronized (this.contexts) {
 				if (!this.contexts.containsKey(name)) {
@@ -112,8 +126,39 @@ public abstract class NamedContextFactory<C extends NamedContextFactory.Specific
 		return this.contexts.get(name);
 	}
 
-	protected AnnotationConfigApplicationContext createContext(String name) {
-		AnnotationConfigApplicationContext context;
+	public GenericApplicationContext createContext(String name) {
+		GenericApplicationContext context = buildContext(name);
+		// there's an AOT initializer for this context
+		if (applicationContextInitializers.get(name) != null) {
+			applicationContextInitializers.get(name).initialize(context);
+			context.refresh();
+			return context;
+		}
+		registerBeans(name, context);
+		context.refresh();
+		return context;
+	}
+
+	public void registerBeans(String name, GenericApplicationContext context) {
+		Assert.isInstanceOf(AnnotationConfigRegistry.class, context);
+		AnnotationConfigRegistry registry = (AnnotationConfigRegistry) context;
+		if (this.configurations.containsKey(name)) {
+			for (Class<?> configuration : this.configurations.get(name).getConfiguration()) {
+				registry.register(configuration);
+			}
+		}
+		for (Map.Entry<String, C> entry : this.configurations.entrySet()) {
+			if (entry.getKey().startsWith("default.")) {
+				for (Class<?> configuration : entry.getValue().getConfiguration()) {
+					registry.register(configuration);
+				}
+			}
+		}
+		registry.register(PropertyPlaceholderAutoConfiguration.class, this.defaultConfigType);
+	}
+
+	public GenericApplicationContext buildContext(String name) {
+		GenericApplicationContext context;
 		if (this.parent != null) {
 			// jdk11 issue
 			// https://github.com/spring-cloud/spring-cloud-netflix/issues/3101
@@ -126,33 +171,21 @@ public abstract class NamedContextFactory<C extends NamedContextFactory.Specific
 			else {
 				beanFactory.setBeanClassLoader(parent.getClassLoader());
 			}
-			context = new AnnotationConfigApplicationContext(beanFactory);
-			context.setClassLoader(this.parent.getClassLoader());
+			context = AotDetector.useGeneratedArtifacts() ? new GenericApplicationContext(beanFactory)
+					: new AnnotationConfigApplicationContext(beanFactory);
+			context.setClassLoader(parent.getClassLoader());
 		}
 		else {
-			context = new AnnotationConfigApplicationContext();
+			context = AotDetector.useGeneratedArtifacts() ? new GenericApplicationContext()
+					: new AnnotationConfigApplicationContext();
 		}
-		if (this.configurations.containsKey(name)) {
-			for (Class<?> configuration : this.configurations.get(name).getConfiguration()) {
-				context.register(configuration);
-			}
-		}
-		for (Map.Entry<String, C> entry : this.configurations.entrySet()) {
-			if (entry.getKey().startsWith("default.")) {
-				for (Class<?> configuration : entry.getValue().getConfiguration()) {
-					context.register(configuration);
-				}
-			}
-		}
-		context.register(PropertyPlaceholderAutoConfiguration.class, this.defaultConfigType);
-		context.getEnvironment().getPropertySources().addFirst(new MapPropertySource(this.propertySourceName,
-				Collections.<String, Object>singletonMap(this.propertyName, name)));
+		context.getEnvironment().getPropertySources().addFirst(
+				new MapPropertySource(this.propertySourceName, Collections.singletonMap(this.propertyName, name)));
 		if (this.parent != null) {
 			// Uses Environment from parent as well as beans
 			context.setParent(this.parent);
 		}
 		context.setDisplayName(generateDisplayName(name));
-		context.refresh();
 		return context;
 	}
 
@@ -161,7 +194,7 @@ public abstract class NamedContextFactory<C extends NamedContextFactory.Specific
 	}
 
 	public <T> T getInstance(String name, Class<T> type) {
-		AnnotationConfigApplicationContext context = getContext(name);
+		GenericApplicationContext context = getContext(name);
 		try {
 			return context.getBean(type);
 		}
@@ -176,7 +209,7 @@ public abstract class NamedContextFactory<C extends NamedContextFactory.Specific
 	}
 
 	public <T> ObjectProvider<T> getProvider(String name, Class<T> type) {
-		AnnotationConfigApplicationContext context = getContext(name);
+		GenericApplicationContext context = getContext(name);
 		return context.getBeanProvider(type);
 	}
 
@@ -187,7 +220,7 @@ public abstract class NamedContextFactory<C extends NamedContextFactory.Specific
 
 	@SuppressWarnings("unchecked")
 	public <T> T getInstance(String name, ResolvableType type) {
-		AnnotationConfigApplicationContext context = getContext(name);
+		GenericApplicationContext context = getContext(name);
 		String[] beanNames = BeanFactoryUtils.beanNamesForTypeIncludingAncestors(context, type);
 		if (beanNames.length > 0) {
 			for (String beanName : beanNames) {
@@ -200,9 +233,13 @@ public abstract class NamedContextFactory<C extends NamedContextFactory.Specific
 	}
 
 	public <T> Map<String, T> getInstances(String name, Class<T> type) {
-		AnnotationConfigApplicationContext context = getContext(name);
+		GenericApplicationContext context = getContext(name);
 
 		return BeanFactoryUtils.beansOfTypeIncludingAncestors(context, type);
+	}
+
+	public Map<String, C> getConfigurations() {
+		return configurations;
 	}
 
 	/**

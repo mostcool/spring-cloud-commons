@@ -50,6 +50,7 @@ import org.springframework.web.util.UriComponentsBuilder;
  * @author Olga Maciaszek-Sharma
  * @author Zhiguo Chen
  * @author Sabyasachi Bhattacharya
+ * @author Zhuozhi Ji
  */
 public final class ServiceInstanceListSupplierBuilder {
 
@@ -108,6 +109,31 @@ public final class ServiceInstanceListSupplierBuilder {
 	 */
 	public ServiceInstanceListSupplierBuilder withBase(ServiceInstanceListSupplier supplier) {
 		this.baseCreator = context -> supplier;
+		return this;
+	}
+
+	/**
+	 * Adds a {@link WeightedServiceInstanceListSupplier} to the
+	 * {@link ServiceInstanceListSupplier} hierarchy.
+	 * @return the {@link ServiceInstanceListSupplierBuilder} object
+	 */
+	public ServiceInstanceListSupplierBuilder withWeighted() {
+		DelegateCreator creator = (context, delegate) -> new WeightedServiceInstanceListSupplier(delegate);
+		this.creators.add(creator);
+		return this;
+	}
+
+	/**
+	 * Adds a {@link WeightedServiceInstanceListSupplier} that uses user-provided
+	 * {@link WeightFunction} instance to the {@link ServiceInstanceListSupplier}
+	 * hierarchy.
+	 * @param weightFunction a user-provided {@link WeightFunction} instance
+	 * @return the {@link ServiceInstanceListSupplierBuilder} object
+	 */
+	public ServiceInstanceListSupplierBuilder withWeighted(WeightFunction weightFunction) {
+		DelegateCreator creator = (context, delegate) -> new WeightedServiceInstanceListSupplier(delegate,
+				weightFunction);
+		this.creators.add(creator);
 		return this;
 	}
 
@@ -192,6 +218,21 @@ public final class ServiceInstanceListSupplierBuilder {
 	public ServiceInstanceListSupplierBuilder withZonePreference() {
 		DelegateCreator creator = (context, delegate) -> {
 			LoadBalancerZoneConfig zoneConfig = context.getBean(LoadBalancerZoneConfig.class);
+			return new ZonePreferenceServiceInstanceListSupplier(delegate, zoneConfig);
+		};
+		this.creators.add(creator);
+		return this;
+	}
+
+	/**
+	 * Adds a {@link ZonePreferenceServiceInstanceListSupplier} to the
+	 * {@link ServiceInstanceListSupplier} hierarchy.
+	 * @param zoneName desired zone for zone preference
+	 * @return the {@link ServiceInstanceListSupplierBuilder} object
+	 */
+	public ServiceInstanceListSupplierBuilder withZonePreference(String zoneName) {
+		DelegateCreator creator = (context, delegate) -> {
+			LoadBalancerZoneConfig zoneConfig = new LoadBalancerZoneConfig(zoneName);
 			return new ZonePreferenceServiceInstanceListSupplier(delegate, zoneConfig);
 		};
 		this.creators.add(creator);

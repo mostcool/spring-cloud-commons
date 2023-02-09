@@ -48,8 +48,15 @@ class BlockingLoadBalancerClientAutoConfigurationTests {
 
 	@Test
 	public void worksWithoutSpringWeb() {
-		applicationContextRunner.withClassLoader(new FilteredClassLoader(RestTemplate.class)).run(context -> {
+		applicationContextRunner.withClassLoader(new FilteredClassLoader(RestTemplate.class))
+				.run(context -> assertThat(context).doesNotHaveBean(BlockingLoadBalancerClient.class));
+	}
+
+	@Test
+	void shouldNotFailOnRetryFactoryWhenLoadBalancingDisabled() {
+		applicationContextRunner.withPropertyValues("spring.cloud.loadbalancer.enabled=false").run(context -> {
 			assertThat(context).doesNotHaveBean(BlockingLoadBalancerClient.class);
+			assertThat(context).doesNotHaveBean(LoadBalancedRetryFactory.class);
 		});
 	}
 

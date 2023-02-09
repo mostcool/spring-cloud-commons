@@ -42,6 +42,7 @@ public class LoadBalancerClientSpecification implements NamedContextFactory.Spec
 		this.configuration = configuration;
 	}
 
+	@Override
 	public String getName() {
 		return this.name;
 	}
@@ -51,6 +52,7 @@ public class LoadBalancerClientSpecification implements NamedContextFactory.Spec
 		this.name = name;
 	}
 
+	@Override
 	public Class<?>[] getConfiguration() {
 		return this.configuration;
 	}
@@ -82,7 +84,7 @@ public class LoadBalancerClientSpecification implements NamedContextFactory.Spec
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(this.name, this.configuration);
+		return Objects.hash(this.name, Arrays.hashCode(this.configuration));
 	}
 
 }

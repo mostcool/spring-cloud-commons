@@ -25,6 +25,8 @@ import org.springframework.mock.env.MockEnvironment;
 import static org.assertj.core.api.BDDAssertions.then;
 
 /**
+ * Tests for {@link IdUtils}.
+ *
  * @author Spencer Gibb
  */
 public class IdUtilsTests {
@@ -123,7 +125,7 @@ public class IdUtilsTests {
 	@Test
 	public void testServiceIdDefaults() {
 		this.env.setProperty("cachedrandom.application.value", "123abc");
-		then("application:0:123abc").isEqualTo(IdUtils.getResolvedServiceId(this.env));
+		then("application:8080:123abc").isEqualTo(IdUtils.getResolvedServiceId(this.env));
 	}
 
 	@Test

@@ -58,7 +58,7 @@ public class ConfigurationPropertiesRebinderIntegrationTests {
 
 	@Test
 	@DirtiesContext
-	public void testSimpleProperties() throws Exception {
+	public void testSimpleProperties() {
 		then(this.properties.getMessage()).isEqualTo("Hello scope!");
 		then(this.properties.getCount()).isEqualTo(1);
 		// Change the dynamic property source...
@@ -70,18 +70,18 @@ public class ConfigurationPropertiesRebinderIntegrationTests {
 
 	@Test
 	@DirtiesContext
-	public void testRefreshInParent() throws Exception {
-		then(this.config.getName()).isEqualTo("main");
+	public void testRefreshInParent() {
+		then(this.config.getName()).isEqualTo("parent");
 		// Change the dynamic property source...
 		TestPropertyValues.of("config.name=foo").applyTo(this.environment);
 		// ...and then refresh, so the bean is re-initialized:
 		this.rebinder.rebind();
-		then(this.config.getName()).isEqualTo("foo");
+		then(this.config.getName()).isEqualTo("parent");
 	}
 
 	@Test
 	@DirtiesContext
-	public void testRefresh() throws Exception {
+	public void testRefresh() {
 		then(this.properties.getCount()).isEqualTo(1);
 		then(this.properties.getMessage()).isEqualTo("Hello scope!");
 		// Change the dynamic property source...
@@ -94,7 +94,7 @@ public class ConfigurationPropertiesRebinderIntegrationTests {
 
 	@Test
 	@DirtiesContext
-	public void testRefreshByName() throws Exception {
+	public void testRefreshByName() {
 		then(this.properties.getCount()).isEqualTo(1);
 		then(this.properties.getMessage()).isEqualTo("Hello scope!");
 		// Change the dynamic property source...

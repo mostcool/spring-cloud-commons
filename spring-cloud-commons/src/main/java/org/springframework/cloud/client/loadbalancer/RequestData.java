@@ -74,6 +74,11 @@ public class RequestData {
 				new HashMap<>());
 	}
 
+	public RequestData(ServerHttpRequest request, Map<String, Object> attributes) {
+		this(request.getMethod(), request.getURI(), request.getHeaders(), buildCookies(request.getCookies()),
+				attributes);
+	}
+
 	private static MultiValueMap<String, String> buildCookies(MultiValueMap<String, HttpCookie> cookies) {
 		HttpHeaders newCookies = new HttpHeaders();
 		if (cookies != null) {
@@ -136,10 +141,9 @@ public class RequestData {
 		if (this == o) {
 			return true;
 		}
-		if (!(o instanceof RequestData)) {
+		if (!(o instanceof RequestData that)) {
 			return false;
 		}
-		RequestData that = (RequestData) o;
 		return httpMethod == that.httpMethod && Objects.equals(url, that.url) && Objects.equals(headers, that.headers)
 				&& Objects.equals(cookies, that.cookies) && Objects.equals(attributes, that.attributes);
 	}

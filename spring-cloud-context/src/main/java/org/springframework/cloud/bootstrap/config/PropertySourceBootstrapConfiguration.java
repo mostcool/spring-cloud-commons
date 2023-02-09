@@ -98,8 +98,7 @@ public class PropertySourceBootstrapConfiguration
 			}
 			List<PropertySource<?>> sourceList = new ArrayList<>();
 			for (PropertySource<?> p : source) {
-				if (p instanceof EnumerablePropertySource) {
-					EnumerablePropertySource<?> enumerable = (EnumerablePropertySource<?>) p;
+				if (p instanceof EnumerablePropertySource<?> enumerable) {
 					sourceList.add(new BootstrapPropertySource<>(enumerable));
 				}
 				else {
@@ -120,14 +119,13 @@ public class PropertySourceBootstrapConfiguration
 				}
 			}
 			insertPropertySources(propertySources, composite);
-			reinitializeLoggingSystem(environment, logConfig, logFile);
+			reinitializeLoggingSystem(environment);
 			setLogLevels(applicationContext, environment);
 			handleIncludedProfiles(environment);
 		}
 	}
 
-	private void reinitializeLoggingSystem(ConfigurableEnvironment environment, String oldLogConfig,
-			LogFile oldLogFile) {
+	private void reinitializeLoggingSystem(ConfigurableEnvironment environment) {
 		Map<String, Object> props = Binder.get(environment).bind("logging", Bindable.mapOf(String.class, Object.class))
 				.orElseGet(Collections::emptyMap);
 		if (!props.isEmpty()) {
@@ -153,7 +151,7 @@ public class PropertySourceBootstrapConfiguration
 		rebinder.setEnvironment(environment);
 		// We can't fire the event in the ApplicationContext here (too early), but we can
 		// create our own listener and poke it (it doesn't need the key changes)
-		rebinder.onApplicationEvent(new EnvironmentChangeEvent(applicationContext, Collections.<String>emptySet()));
+		rebinder.onApplicationEvent(new EnvironmentChangeEvent(applicationContext, Collections.emptySet()));
 	}
 
 	private void insertPropertySources(MutablePropertySources propertySources, List<PropertySource<?>> composite) {

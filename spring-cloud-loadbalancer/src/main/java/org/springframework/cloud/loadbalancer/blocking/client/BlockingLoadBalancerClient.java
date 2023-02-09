@@ -43,7 +43,6 @@ import org.springframework.cloud.client.loadbalancer.Response;
 import org.springframework.cloud.client.loadbalancer.ResponseData;
 import org.springframework.cloud.client.loadbalancer.TimedRequestContext;
 import org.springframework.cloud.client.loadbalancer.reactive.ReactiveLoadBalancer;
-import org.springframework.cloud.loadbalancer.support.LoadBalancerClientFactory;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.util.ReflectionUtils;
@@ -60,16 +59,6 @@ import static org.springframework.cloud.client.loadbalancer.reactive.ReactiveLoa
 public class BlockingLoadBalancerClient implements LoadBalancerClient {
 
 	private final ReactiveLoadBalancer.Factory<ServiceInstance> loadBalancerClientFactory;
-
-	/**
-	 * @deprecated in favour of
-	 * {@link BlockingLoadBalancerClient#BlockingLoadBalancerClient(ReactiveLoadBalancer.Factory)}
-	 */
-	@Deprecated
-	public BlockingLoadBalancerClient(LoadBalancerClientFactory loadBalancerClientFactory,
-			LoadBalancerProperties properties) {
-		this.loadBalancerClientFactory = loadBalancerClientFactory;
-	}
 
 	public BlockingLoadBalancerClient(ReactiveLoadBalancer.Factory<ServiceInstance> loadBalancerClientFactory) {
 		this.loadBalancerClientFactory = loadBalancerClientFactory;
@@ -105,6 +94,9 @@ public class BlockingLoadBalancerClient implements LoadBalancerClient {
 	@Override
 	public <T> T execute(String serviceId, ServiceInstance serviceInstance, LoadBalancerRequest<T> request)
 			throws IOException {
+		if (serviceInstance == null) {
+			throw new IllegalArgumentException("Service Instance cannot be null");
+		}
 		DefaultResponse defaultResponse = new DefaultResponse(serviceInstance);
 		Set<LoadBalancerLifecycle> supportedLifecycleProcessors = getSupportedLifecycleProcessors(serviceId);
 		Request lbRequest = request instanceof Request ? (Request) request : new DefaultRequest<>();

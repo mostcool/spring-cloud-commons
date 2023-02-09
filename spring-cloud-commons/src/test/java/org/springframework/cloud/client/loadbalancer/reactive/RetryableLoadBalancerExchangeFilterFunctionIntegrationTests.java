@@ -34,7 +34,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.web.server.LocalServerPort;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.cloud.client.DefaultServiceInstance;
 import org.springframework.cloud.client.ServiceInstance;
 import org.springframework.cloud.client.discovery.DiscoveryClient;
@@ -229,7 +229,7 @@ class RetryableLoadBalancerExchangeFilterFunctionIntegrationTests {
 		@Bean
 		ReactiveLoadBalancer.Factory<ServiceInstance> reactiveLoadBalancerFactory(DiscoveryClient discoveryClient,
 				LoadBalancerProperties properties) {
-			return new ReactiveLoadBalancer.Factory<ServiceInstance>() {
+			return new ReactiveLoadBalancer.Factory<>() {
 
 				private final TestLoadBalancerLifecycle testLoadBalancerLifecycle = new TestLoadBalancerLifecycle();
 
@@ -265,10 +265,11 @@ class RetryableLoadBalancerExchangeFilterFunctionIntegrationTests {
 		}
 
 		@Bean
-		RetryableLoadBalancerExchangeFilterFunction exchangeFilterFunction(LoadBalancerProperties properties,
+		RetryableLoadBalancerExchangeFilterFunction exchangeFilterFunction(
 				ReactiveLoadBalancer.Factory<ServiceInstance> factory) {
 			return new RetryableLoadBalancerExchangeFilterFunction(
-					new RetryableExchangeFilterFunctionLoadBalancerRetryPolicy(properties), factory, properties);
+					new RetryableExchangeFilterFunctionLoadBalancerRetryPolicy.Factory(factory), factory,
+					Collections.emptyList());
 		}
 
 	}

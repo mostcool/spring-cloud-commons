@@ -135,10 +135,7 @@ public class BootstrapConfigFileApplicationListener
 	private static final Set<String> LOAD_FILTERED_PROPERTY;
 
 	static {
-		Set<String> filteredProperties = new HashSet<>();
-		filteredProperties.add("spring.profiles.active");
-		filteredProperties.add("spring.profiles.include");
-		LOAD_FILTERED_PROPERTY = Collections.unmodifiableSet(filteredProperties);
+		LOAD_FILTERED_PROPERTY = Set.of("spring.profiles.active", "spring.profiles.include");
 	}
 
 	/**
@@ -638,7 +635,7 @@ public class BootstrapConfigFileApplicationListener
 			return loaded.stream().map((propertySource) -> {
 				Binder binder = new Binder(ConfigurationPropertySources.from(propertySource),
 						this.placeholdersResolver);
-				String[] profiles = binder.bind("spring.profiles", STRING_ARRAY).orElse(null);
+				String[] profiles = binder.bind("spring.config.activate.on-profile", STRING_ARRAY).orElse(null);
 				Set<Profile> activeProfiles = getProfiles(binder, ACTIVE_PROFILES_PROPERTY);
 				Set<Profile> includeProfiles = getProfiles(binder, INCLUDE_PROFILES_PROPERTY);
 				return new Document(propertySource, profiles, activeProfiles, includeProfiles);

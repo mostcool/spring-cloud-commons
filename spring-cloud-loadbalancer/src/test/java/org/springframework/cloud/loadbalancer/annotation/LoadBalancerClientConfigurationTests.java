@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -93,10 +93,10 @@ class LoadBalancerClientConfigurationTests {
 		reactiveDiscoveryClientRunner.withPropertyValues("spring.cloud.loadbalancer.configurations=zone-preference")
 				.run(context -> {
 					ServiceInstanceListSupplier supplier = context.getBean(ServiceInstanceListSupplier.class);
-					then(supplier).isInstanceOf(CachingServiceInstanceListSupplier.class);
+					then(supplier).isInstanceOf(ZonePreferenceServiceInstanceListSupplier.class);
 					ServiceInstanceListSupplier delegate = ((DelegatingServiceInstanceListSupplier) supplier)
 							.getDelegate();
-					then(delegate).isInstanceOf(ZonePreferenceServiceInstanceListSupplier.class);
+					then(delegate).isInstanceOf(CachingServiceInstanceListSupplier.class);
 					ServiceInstanceListSupplier secondDelegate = ((DelegatingServiceInstanceListSupplier) delegate)
 							.getDelegate();
 					then(secondDelegate).isInstanceOf(DiscoveryClientServiceInstanceListSupplier.class);
@@ -123,7 +123,10 @@ class LoadBalancerClientConfigurationTests {
 					then(supplier).isInstanceOf(WeightedServiceInstanceListSupplier.class);
 					ServiceInstanceListSupplier delegate = ((DelegatingServiceInstanceListSupplier) supplier)
 							.getDelegate();
-					then(delegate).isInstanceOf(DiscoveryClientServiceInstanceListSupplier.class);
+					then(delegate).isInstanceOf(CachingServiceInstanceListSupplier.class);
+					ServiceInstanceListSupplier secondDelegate = ((DelegatingServiceInstanceListSupplier) delegate)
+							.getDelegate();
+					then(secondDelegate).isInstanceOf(DiscoveryClientServiceInstanceListSupplier.class);
 				});
 	}
 
@@ -136,7 +139,10 @@ class LoadBalancerClientConfigurationTests {
 					then(supplier).isInstanceOf(RequestBasedStickySessionServiceInstanceListSupplier.class);
 					ServiceInstanceListSupplier delegate = ((DelegatingServiceInstanceListSupplier) supplier)
 							.getDelegate();
-					then(delegate).isInstanceOf(DiscoveryClientServiceInstanceListSupplier.class);
+					then(delegate).isInstanceOf(CachingServiceInstanceListSupplier.class);
+					ServiceInstanceListSupplier secondDelegate = ((DelegatingServiceInstanceListSupplier) delegate)
+							.getDelegate();
+					then(secondDelegate).isInstanceOf(DiscoveryClientServiceInstanceListSupplier.class);
 				});
 	}
 
@@ -202,7 +208,10 @@ class LoadBalancerClientConfigurationTests {
 				.withPropertyValues("spring.cloud.loadbalancer.configurations=weighted").run(context -> {
 					ServiceInstanceListSupplier supplier = context.getBean(ServiceInstanceListSupplier.class);
 					then(supplier).isInstanceOf(WeightedServiceInstanceListSupplier.class);
-					then(((DelegatingServiceInstanceListSupplier) supplier).getDelegate())
+					ServiceInstanceListSupplier delegate = ((DelegatingServiceInstanceListSupplier) supplier)
+							.getDelegate();
+					then(delegate).isInstanceOf(CachingServiceInstanceListSupplier.class);
+					then(((DelegatingServiceInstanceListSupplier) delegate).getDelegate())
 							.isInstanceOf(DiscoveryClientServiceInstanceListSupplier.class);
 				});
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import java.util.concurrent.TimeoutException;
 import reactor.util.retry.RetryBackoffSpec;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.cloud.client.ServiceInstance;
 import org.springframework.cloud.client.loadbalancer.reactive.ReactiveLoadBalancer;
 import org.springframework.http.HttpMethod;
 import org.springframework.util.LinkedCaseInsensitiveMap;
@@ -70,6 +71,19 @@ public class LoadBalancerProperties {
 	 * Properties for LoadBalancer sticky-session.
 	 */
 	private StickySession stickySession = new StickySession();
+
+	/**
+	 * If this flag is set to {@code true},
+	 * {@code ServiceInstanceListSupplier#get(Request request)} method will be implemented
+	 * to call {@code delegate.get(request)} in classes assignable from
+	 * {@code DelegatingServiceInstanceListSupplier} that don't already implement that
+	 * method, with the exclusion of {@code CachingServiceInstanceListSupplier} and
+	 * {@code HealthCheckServiceInstanceListSupplier}, which should be placed in the
+	 * instance supplier hierarchy directly after the supplier performing instance
+	 * retrieval over the network, before any request-based filtering is done,
+	 * {@code true} by default.
+	 */
+	private boolean callGetWithRequestOnDelegates = true;
 
 	public HealthCheck getHealthCheck() {
 		return healthCheck;
@@ -122,6 +136,14 @@ public class LoadBalancerProperties {
 
 	public XForwarded getXForwarded() {
 		return xForwarded;
+	}
+
+	public boolean isCallGetWithRequestOnDelegates() {
+		return callGetWithRequestOnDelegates;
+	}
+
+	public void setCallGetWithRequestOnDelegates(boolean callGetWithRequestOnDelegates) {
+		this.callGetWithRequestOnDelegates = callGetWithRequestOnDelegates;
 	}
 
 	public static class StickySession {
@@ -217,6 +239,14 @@ public class LoadBalancerProperties {
 		 */
 		private boolean repeatHealthCheck = true;
 
+		/**
+		 * Indicates whether the {@code healthCheckFlux} should emit on each alive
+		 * {@link ServiceInstance} that has been retrieved. If set to {@code false}, the
+		 * entire alive instances sequence is first collected into a list and only then
+		 * emitted.
+		 */
+		private boolean updateResultsList = true;
+
 		public boolean getRefetchInstances() {
 			return refetchInstances;
 		}
@@ -271,6 +301,14 @@ public class LoadBalancerProperties {
 
 		public void setPort(Integer port) {
 			this.port = port;
+		}
+
+		public boolean isUpdateResultsList() {
+			return updateResultsList;
+		}
+
+		public void setUpdateResultsList(boolean updateResultsList) {
+			this.updateResultsList = updateResultsList;
 		}
 
 	}

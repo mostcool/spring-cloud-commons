@@ -109,21 +109,17 @@ tracker for issues and merging pull requests into main. If you want
 to contribute even something trivial please do not hesitate, but
 follow the guidelines below.
 
-[[sign-the-contributor-license-agreement]]
-== Sign the Contributor License Agreement
+[[developer-certificate-of-origin]]
+== Developer Certificate of Origin (DCO)
 
-Before we accept a non-trivial patch or pull request we will need you to sign the
-https://cla.pivotal.io/sign/spring[Contributor License Agreement].
-Signing the contributor's agreement does not grant anyone commit rights to the main
-repository, but it does mean that we can accept your contributions, and you will get an
-author credit if we do.  Active contributors might be asked to join the core team, and
-given the ability to merge pull requests.
+All commits must include a __Signed-off-by__ trailer at the end of each commit message to indicate that the contributor agrees to the Developer Certificate of Origin.
+For additional details, please refer to the blog post https://spring.io/blog/2025/01/06/hello-dco-goodbye-cla-simplifying-contributions-to-spring[Hello DCO, Goodbye CLA: Simplifying Contributions to Spring].
 
 [[code-of-conduct]]
 == Code of Conduct
-This project adheres to the Contributor Covenant https://github.com/spring-cloud/spring-cloud-build/blob/main/docs/src/main/asciidoc/code-of-conduct.adoc[code of
+This project adheres to the Contributor Covenant https://github.com/spring-cloud/spring-cloud-build/blob/main/docs/modules/ROOT/partials/code-of-conduct.adoc[code of
 conduct]. By participating, you  are expected to uphold this code. Please report
-unacceptable behavior to spring-code-of-conduct@pivotal.io.
+unacceptable behavior to code-of-conduct@spring.io.
 
 [[code-conventions-and-housekeeping]]
 == Code Conventions and Housekeeping
@@ -297,7 +293,7 @@ Spring Cloud Build brings along the  `basepom:duplicate-finder-maven-plugin`, th
 [[duplicate-finder-configuration]]
 === Duplicate Finder configuration
 
-Duplicate finder is *enabled by default* and will run in the `verify` phase of your Maven build, but it will only take effect in your project if you add the `duplicate-finder-maven-plugin` to the `build` section of the projecst's `pom.xml`.
+Duplicate finder is *enabled by default* and will run in the `verify` phase of your Maven build, but it will only take effect in your project if you add the `duplicate-finder-maven-plugin` to the `build` section of the project's `pom.xml`.
 
 .pom.xml
 [source,xml]

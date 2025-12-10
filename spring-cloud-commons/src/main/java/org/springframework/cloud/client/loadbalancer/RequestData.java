@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-present the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,12 +23,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.core.style.ToStringCreator;
 import org.springframework.http.HttpCookie;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.client.ClientRequest;
 
@@ -45,14 +48,14 @@ public class RequestData {
 
 	private final URI url;
 
-	private final HttpHeaders headers;
+	private final @Nullable HttpHeaders headers;
 
 	private final MultiValueMap<String, String> cookies;
 
 	private final Map<String, Object> attributes;
 
-	public RequestData(HttpMethod httpMethod, URI url, HttpHeaders headers, MultiValueMap<String, String> cookies,
-			Map<String, Object> attributes) {
+	public RequestData(HttpMethod httpMethod, URI url, @Nullable HttpHeaders headers,
+			MultiValueMap<String, String> cookies, Map<String, Object> attributes) {
 		this.httpMethod = httpMethod;
 		this.url = url;
 		this.headers = headers;
@@ -80,7 +83,7 @@ public class RequestData {
 	}
 
 	private static MultiValueMap<String, String> buildCookies(MultiValueMap<String, HttpCookie> cookies) {
-		HttpHeaders newCookies = new HttpHeaders();
+		MultiValueMap<String, String> newCookies = new LinkedMultiValueMap<>();
 		if (cookies != null) {
 			cookies.forEach((key, value) -> value
 				.forEach(cookie -> newCookies.put(cookie.getName(), Collections.singletonList(cookie.getValue()))));
@@ -89,7 +92,7 @@ public class RequestData {
 	}
 
 	private static MultiValueMap<String, String> buildCookiesFromHeaders(HttpHeaders headers) {
-		HttpHeaders newCookies = new HttpHeaders();
+		MultiValueMap<String, String> newCookies = new LinkedMultiValueMap<>();
 		if (headers == null) {
 			return newCookies;
 		}
@@ -114,11 +117,11 @@ public class RequestData {
 		return url;
 	}
 
-	public HttpHeaders getHeaders() {
+	public @Nullable HttpHeaders getHeaders() {
 		return headers;
 	}
 
-	public MultiValueMap<String, String> getCookies() {
+	public @Nullable MultiValueMap<String, String> getCookies() {
 		return cookies;
 	}
 

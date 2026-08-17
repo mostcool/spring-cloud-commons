@@ -170,10 +170,26 @@ The `EnvironmentChangeEvent` covers a large class of refresh use cases, as long 
 Note that those APIs are public and part of core Spring.
 You can verify that the changes are bound to `@ConfigurationProperties` beans by visiting the `/configprops` endpoint (a standard Spring Boot Actuator feature).
 For instance, a `DataSource` can have its `maxPoolSize` changed at runtime (the default `DataSource` created by Spring Boot is a `@ConfigurationProperties` bean) and grow capacity dynamically.
+
+When a `@ConfigurationProperties` bean is re-bound, its properties are first reset to their class-level defaults so that values for properties that have been removed from the `Environment` do not linger.
+This reset also recurses into nested `@ConfigurationProperties` objects (for example a nested object that has no setter).
+To avoid descending into object graphs that are not configuration properties, the reset never recurses into JDK types or types in the standard `jakarta.\*` and `javax.*` API namespaces.
+If you have a `@ConfigurationProperties` bean that holds a reference to some other library type that should not be recursed into (for example, a type with a cyclic object graph or one that holds internal state that must not be mutated), you can exclude it by setting `spring.cloud.refresh.never-reset-nested-types`.
+The value is a comma-separated list of fully qualified class names or package prefixes, each matched against the type's class name with a prefix comparison:
+
+[source,properties]
+----
+spring.cloud.refresh.never-reset-nested-types=com.example.MyClient,com.acme.sdk.
+----
+
+NOTE: Re-binding mutates the `@ConfigurationProperties` bean's fields in place, destroying and re-initializing the same instance rather than swapping it out for a new one.
+Concurrent rebinds of the same bean are serialized internally, but this does not make the bean safe to read from other threads while a rebind is in progress: a concurrent reader can observe transient, partially-updated state (for example, a property briefly reset to its class-level default before the new value is applied).
+If your application needs a consistent view of a bean's properties across a refresh, use `@RefreshScope` instead, which serializes reads against refreshes for beans in that scope.
+
 Re-binding `@ConfigurationProperties` does not cover another large class of use cases, where you need more control over the refresh and where you need a change to be atomic over the whole `ApplicationContext`.
 To address those concerns, we have `@RefreshScope`.
 
-NOTE:  Java Records annotated with `@ConfigurationProperties` cannot be refreshed.
+NOTE: Objects using constructor binding including Java Records annotated with `@ConfigurationProperties` cannot be refreshed.
 
 [[refresh-scope]]
 == Refresh Scope
@@ -225,6 +241,22 @@ WARNING: Context Refresh is not supported for Spring AOT transformations and nat
 === Refresh Scope on Restart
 
 Seamlessly refreshing beans on restart is especially useful for applications that run with JVM Checkpoint Restore (such as https://github.com/CRaC[Project CRaC]). To allow this ability, we now instantiate a `RefreshScopeLifecycle` bean that triggers Context Refresh on restart, resulting in rebinding configuration properties and refreshing any beans annotated with `@RefreshScope`. You can disable this behavior by setting `spring.cloud.refresh.on-restart.enabled` to `false`.
+
+[[refresh-scope-health-indicator]]
+=== Health Indicator
+
+Spring Cloud auto-configures a `RefreshScopeHealthIndicator` that monitors the health of the refresh scope.
+If any bean fails to re-initialize or rebind its configuration properties after a context refresh, the indicator transitions to `DOWN` and exposes the relevant exception details.
+
+To disable the health indicator, set:
+
+[source,yaml]
+----
+management:
+  health:
+    refresh:
+      enabled: false
+----
 
 [[encryption-and-decryption]]
 == Encryption and Decryption

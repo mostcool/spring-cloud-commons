@@ -17,12 +17,18 @@
 package org.springframework.cloud.context.properties;
 
 import java.beans.PropertyDescriptor;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Modifier;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -37,6 +43,7 @@ import org.springframework.beans.BeanWrapperImpl;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactoryUtils;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.cloud.autoconfigure.RefreshAutoConfiguration.RefreshProperties;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.cloud.context.environment.EnvironmentChangeEvent;
 import org.springframework.cloud.util.ProxyUtils;
@@ -57,6 +64,17 @@ import org.springframework.util.StringUtils;
  * re-initialized, the changes are available immediately to any component that is using
  * the <code>@ConfigurationProperties</code> bean.
  *
+ * <p>
+ * Rebinding a given bean is serialized against other concurrent rebinds of that same
+ * bean, so two overlapping refreshes (for example a manual {@link #rebind(String)} call
+ * racing with an {@link EnvironmentChangeEvent}-triggered {@link #rebind()}) cannot
+ * interleave their destroy/reset/re-initialize steps. That does not, however, make the
+ * bean safe to read concurrently from other threads while a rebind is in progress: the
+ * bean is mutated in place, field by field, so a concurrent reader can observe transient
+ * intermediate state. Beans that need a consistent view across a refresh should use
+ * {@link RefreshScope} instead, which serializes reads against refreshes via a per-bean
+ * {@link java.util.concurrent.locks.ReadWriteLock}.
+ *
  * @author Dave Syer
  * @author Yanming Zhou
  * @see RefreshScope for a deeper and optionally more focused refresh of bean components.
@@ -75,8 +93,21 @@ public class ConfigurationPropertiesRebinder
 
 	private Map<String, Exception> errors = new ConcurrentHashMap<>();
 
+	private final ConcurrentMap<String, Lock> rebindLocks = new ConcurrentHashMap<>();
+
+	private final Set<String> neverResetNestedTypes;
+
 	public ConfigurationPropertiesRebinder(ConfigurationPropertiesBeans beans) {
+		this(beans, Collections.emptySet());
+	}
+
+	public ConfigurationPropertiesRebinder(ConfigurationPropertiesBeans beans, RefreshProperties refreshProperties) {
+		this(beans, refreshProperties.getNeverResetNestedTypes());
+	}
+
+	private ConfigurationPropertiesRebinder(ConfigurationPropertiesBeans beans, Set<String> neverResetNestedTypes) {
 		this.beans = beans;
+		this.neverResetNestedTypes = neverResetNestedTypes;
 	}
 
 	@Override
@@ -136,49 +167,62 @@ public class ConfigurationPropertiesRebinder
 	}
 
 	private boolean rebind(String name, ApplicationContext appContext) {
+		// Serialize concurrent rebinds of the *same* bean (for example a manual
+		// rebind(name) racing with an EnvironmentChangeEvent-triggered rebind()) so
+		// their destroy/reset/re-initialize steps cannot interleave on the live bean.
+		// This does not protect concurrent readers of the bean; see the class Javadoc.
+		Lock lock = this.rebindLocks.computeIfAbsent(name, key -> new ReentrantLock());
+		lock.lock();
 		try {
-			Object bean = appContext.getBean(name);
-			if (bean != null) {
-				Class<?> targetClass = AopUtils.getTargetClass(bean);
-				// TODO: determine a more general approach to fix this.
-				// see
-				// https://github.com/spring-cloud/spring-cloud-commons/issues/571
-				if (getNeverRefreshable().contains(targetClass.getName()) || getNeverRefreshable().contains(name)) {
-					return false; // ignore
-				}
-				if (AopUtils.isAopProxy(bean) && bean instanceof Advised advised) {
-					Object target = ProxyUtils.getTargetObject(bean);
-					if (target != bean && !targetClass.isInterface()
-							&& !Modifier.isAbstract(targetClass.getModifiers())) {
-						Object freshBean = appContext.getAutowireCapableBeanFactory().createBean(targetClass);
-						Object freshTarget = AopUtils.isAopProxy(freshBean) ? ProxyUtils.getTargetObject(freshBean)
-								: freshBean;
-						advised.setTargetSource(new SingletonTargetSource(freshTarget));
-						appContext.getAutowireCapableBeanFactory().destroyBean(target);
+			try {
+				Object bean = appContext.getBean(name);
+				if (bean != null) {
+					Class<?> targetClass = AopUtils.getTargetClass(bean);
+					// TODO: determine a more general approach to fix this.
+					// see
+					// https://github.com/spring-cloud/spring-cloud-commons/issues/571
+					if (getNeverRefreshable().contains(targetClass.getName()) || getNeverRefreshable().contains(name)) {
+						return false; // ignore
+					}
+					if (AopUtils.isAopProxy(bean) && bean instanceof Advised advised) {
+						Object target = ProxyUtils.getTargetObject(bean);
+						if (target != bean && !targetClass.isInterface()
+								&& !Modifier.isAbstract(targetClass.getModifiers())) {
+							Object freshBean = appContext.getAutowireCapableBeanFactory().createBean(targetClass);
+							Object freshTarget = AopUtils.isAopProxy(freshBean) ? ProxyUtils.getTargetObject(freshBean)
+									: freshBean;
+							advised.setTargetSource(new SingletonTargetSource(freshTarget));
+							appContext.getAutowireCapableBeanFactory().destroyBean(target);
+						}
+						else {
+							appContext.getAutowireCapableBeanFactory().destroyBean(target);
+							resetBeanToDefaults(target);
+							appContext.getAutowireCapableBeanFactory().autowireBean(target);
+							appContext.getAutowireCapableBeanFactory().initializeBean(target, name);
+						}
 					}
 					else {
-						appContext.getAutowireCapableBeanFactory().destroyBean(target);
-						resetBeanToDefaults(target);
-						appContext.getAutowireCapableBeanFactory().initializeBean(target, name);
+						appContext.getAutowireCapableBeanFactory().destroyBean(bean);
+						resetBeanToDefaults(bean);
+						appContext.getAutowireCapableBeanFactory().autowireBean(bean);
+						appContext.getAutowireCapableBeanFactory().initializeBean(bean, name);
 					}
+					return true;
 				}
-				else {
-					appContext.getAutowireCapableBeanFactory().destroyBean(bean);
-					resetBeanToDefaults(bean);
-					appContext.getAutowireCapableBeanFactory().initializeBean(bean, name);
-				}
-				return true;
 			}
+			catch (RuntimeException e) {
+				this.errors.put(name, e);
+				throw e;
+			}
+			catch (Exception e) {
+				this.errors.put(name, e);
+				throw new IllegalStateException("Cannot rebind to " + name, e);
+			}
+			return false;
 		}
-		catch (RuntimeException e) {
-			this.errors.put(name, e);
-			throw e;
+		finally {
+			lock.unlock();
 		}
-		catch (Exception e) {
-			this.errors.put(name, e);
-			throw new IllegalStateException("Cannot rebind to " + name, e);
-		}
-		return false;
 	}
 
 	/**
@@ -187,6 +231,18 @@ public class ConfigurationPropertiesRebinder
 	 */
 	private void resetBeanToDefaults(Object bean) {
 		Class<?> targetClass = AopUtils.getTargetClass(bean);
+		if (!hasDefaultConstructor(targetClass)) {
+			// Beans that have no default constructor (for example constructor-bound beans
+			// or beans with required dependencies) cannot be instantiated to obtain their
+			// defaults, so the reset is skipped. The bean is still re-bound from the
+			// Environment afterwards; only reverting removed properties to their defaults
+			// is skipped.
+			if (logger.isDebugEnabled()) {
+				logger.debug("No default constructor for " + targetClass.getName()
+						+ "; skipping property reset before rebinding");
+			}
+			return;
+		}
 		Object freshInstance;
 		try {
 			freshInstance = BeanUtils.instantiateClass(targetClass);
@@ -196,10 +252,28 @@ public class ConfigurationPropertiesRebinder
 					+ " for reset; skipping property reset", ex);
 			return;
 		}
-		resetProperties(bean, freshInstance);
+		resetProperties(bean, freshInstance, Collections.newSetFromMap(new IdentityHashMap<>()));
 	}
 
-	private void resetProperties(Object bean, Object defaults) {
+	/**
+	 * Whether the given type declares a no-argument constructor (of any visibility),
+	 * which is what {@link BeanUtils#instantiateClass(Class)} needs to build a defaults
+	 * template.
+	 */
+	private boolean hasDefaultConstructor(Class<?> type) {
+		for (Constructor<?> constructor : type.getDeclaredConstructors()) {
+			if (constructor.getParameterCount() == 0) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private void resetProperties(Object bean, Object defaults, Set<Object> visited) {
+		// Guard against cyclic object graphs so that recursion always terminates.
+		if (bean == null || !visited.add(bean)) {
+			return;
+		}
 		BeanWrapper target = new BeanWrapperImpl(bean);
 		BeanWrapper defaultsWrapper = new BeanWrapperImpl(defaults);
 		for (PropertyDescriptor pd : target.getPropertyDescriptors()) {
@@ -227,8 +301,8 @@ public class ConfigurationPropertiesRebinder
 							map.putAll(defaultMap);
 						}
 					}
-					else if (value != null && defaultValue != null && !BeanUtils.isSimpleValueType(value.getClass())) {
-						resetProperties(value, defaultValue);
+					else if (value != null && defaultValue != null && isResettableNestedType(value.getClass())) {
+						resetProperties(value, defaultValue, visited);
 					}
 				}
 			}
@@ -239,6 +313,51 @@ public class ConfigurationPropertiesRebinder
 				}
 			}
 		}
+	}
+
+	/**
+	 * Determine whether a nested property value should be recursively reset. Only
+	 * user-defined types are descended into. Recursing into JDK or standard API types
+	 * (for example {@link javax.net.ssl.SSLContext}) is both unnecessary and unsafe:
+	 * their object graphs may be cyclic, which previously led to a
+	 * {@link StackOverflowError} (see gh-1698), and they may expose internal collections
+	 * or maps that must not be cleared. Additional types can be excluded via the
+	 * {@code spring.cloud.refresh.never-reset-nested-types} property.
+	 */
+	boolean isResettableNestedType(Class<?> type) {
+		if (type.isArray() || BeanUtils.isSimpleValueType(type) || isJdkClass(type) || isStandardApiClass(type)) {
+			return false;
+		}
+		String typeName = type.getName();
+		for (String excluded : this.neverResetNestedTypes) {
+			if (typeName.startsWith(excluded)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Whether the given type is provided by the JDK itself. JDK types are loaded either
+	 * by the bootstrap class loader (for example everything in {@code java.base}, which
+	 * reports a {@code null} class loader) or by the platform class loader (the other
+	 * platform modules); application and library types are loaded by the application
+	 * class loader.
+	 */
+	private boolean isJdkClass(Class<?> type) {
+		ClassLoader classLoader = type.getClassLoader();
+		return classLoader == null || classLoader == ClassLoader.getPlatformClassLoader();
+	}
+
+	/**
+	 * Whether the given type belongs to a standard API namespace (Jakarta EE or the
+	 * legacy {@code javax} packages). These namespaces are reserved for specifications
+	 * and, unlike the JDK modules, are loaded by the application class loader, so they
+	 * are not detected by {@link #isJdkClass}.
+	 */
+	private boolean isStandardApiClass(Class<?> type) {
+		String packageName = type.getPackageName();
+		return packageName.startsWith("jakarta.") || packageName.startsWith("javax.");
 	}
 
 	@ManagedAttribute
